@@ -69,22 +69,6 @@ Simply open `frontend/index.html` in your browser (double-click it).
 
 ---
 
-## Project Structure
-
-```
-cloudops-ai-copilot/
-├── backend/
-│   ├── main.py              # FastAPI app + Gemini 2.5 integration
-│   ├── rules.py             # GCP security rule engine (50+ rules)
-│   ├── requirements.txt     # Python dependencies
-│   ├── .env                 # GEMINI_API_KEY goes here
-│   └── data/
-│       └── cloud_config.json  # GCP resource configurations to scan
-├── frontend/
-│   └── index.html           # Complete dashboard (no install needed)
-└── README.md
-```
-
 ---
 
 ## API Endpoints
@@ -115,3 +99,7 @@ cloudops-ai-copilot/
 | IAM Service Account | Owner role, key rotation, user-managed keys |
 | VPC Firewall | 0.0.0.0/0 ingress, all-ports-open rules |
 | GKE Cluster | Legacy ABAC, network policy, private cluster, Workload Identity |
+
+## Results 
+<img width="1916" height="1026" alt="image" src="https://github.com/user-attachments/assets/1a3ed888-7199-401c-b758-c953dc13932e" />
+
