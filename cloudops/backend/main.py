@@ -1,39 +1,53 @@
-
 import json
 import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import google.generativeai as genai
 from dotenv import load_dotenv
 from rules import analyze_resource, calculate_risk_score, calculate_cost_waste
+from google import genai
+from google.genai import types
 
 load_dotenv()
 
-# ── Gemini setup ─────────────────────────────────────────────
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if not GEMINI_API_KEY:
-    raise RuntimeError("GEMINI_API_KEY not found in .env file")
+    raise RuntimeError("GEMINI_API_KEY missing in .env file!")
 
-genai.configure(api_key=GEMINI_API_KEY)
+client = genai.Client(api_key=GEMINI_API_KEY)
 
-# Primary model: gemini-2.5-flash (fast + capable)
-# Fallback model: gemini-2.5-pro  (more powerful, use if flash unavailable)
-PRIMARY_MODEL   = "gemini-2.5-flash"
-FALLBACK_MODEL  = "gemini-2.5-pro"
+# Try these models in order
+MODEL_OPTIONS = [
+    "gemini-2.5-flash-preview-04-17",
+    "gemini-2.5-pro-preview-03-25",
+    "gemini-2.5-flash",
+    "gemini-2.5-pro",
+    "gemini-1.5-flash",
+]
 
-def get_gemini_model():
-    try:
-        return genai.GenerativeModel(PRIMARY_MODEL)
-    except Exception:
-        return genai.GenerativeModel(FALLBACK_MODEL)
+def call_gemini(prompt: str):
+    last_error = ""
+    for model_name in MODEL_OPTIONS:
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    max_output_tokens=800,
+                    temperature=0.4,
+                )
+            )
+            return response.text, model_name
+        except Exception as e:
+            last_error = f"{model_name}: {str(e)}"
+            continue
+    raise HTTPException(
+        status_code=500,
+        detail=f"All Gemini models failed. Error: {last_error}"
+    )
 
-# ── FastAPI app ───────────────────────────────────────────────
-app = FastAPI(
-    title="CloudOps AI Copilot",
-    description="GCP Security & Operations Intelligence powered by Gemini 2.5",
-    version="1.0.0"
-)
+# ── FastAPI ───────────────────────────────────────────────────
+app = FastAPI(title="CloudOps AI Copilot", version="1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -42,140 +56,101 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Helpers ───────────────────────────────────────────────────
 def load_config():
-    config_path = os.path.join(os.path.dirname(__file__), "data", "cloud_config.json")
-    with open(config_path) as f:
+    path = os.path.join(os.path.dirname(__file__), "data", "cloud_config.json")
+    with open(path) as f:
         return json.load(f)
 
 # ── Routes ────────────────────────────────────────────────────
 
 @app.get("/")
 def root():
-    return {
-        "status": "running",
-        "app": "CloudOps AI Copilot",
-        "model": PRIMARY_MODEL,
-        "cloud": "GCP"
-    }
+    return {"status": "running", "app": "CloudOps AI Copilot", "cloud": "GCP"}
 
 
 @app.get("/api/scan")
 def scan():
-    """Scan all GCP resources and return findings + risk score."""
     try:
         config = load_config()
     except FileNotFoundError:
-        raise HTTPException(status_code=500, detail="cloud_config.json not found in data/ folder")
+        raise HTTPException(status_code=500, detail="cloud_config.json not found")
 
     all_findings = []
-    resource_results = []
+    resources    = []
 
-    for resource in config["resources"]:
-        findings = analyze_resource(resource)
-        all_findings.extend(findings)
-        resource_results.append({
-            "id":             resource["id"],
-            "name":           resource["name"],
-            "type":           resource["type"],
-            "region":         resource.get("region", "global"),
-            "cost_per_month": resource.get("cost_per_month", 0),
-            "findings":       findings,
-            "finding_count":  len(findings),
-            "critical_count": len([f for f in findings if f["severity"] == "CRITICAL"]),
-            "high_count":     len([f for f in findings if f["severity"] == "HIGH"]),
+    for r in config["resources"]:
+        f = analyze_resource(r)
+        all_findings.extend(f)
+        resources.append({
+            "id":             r.get("id", r["name"]),
+            "name":           r["name"],
+            "type":           r["type"],
+            "region":         r.get("region", "us-central1"),
+            "cost_per_month": r.get("cost_per_month", r.get("cost", 0)),
+            "findings":       f,
+            "finding_count":  len(f),
+            "critical_count": sum(1 for x in f if x["severity"] == "CRITICAL"),
+            "high_count":     sum(1 for x in f if x["severity"] == "HIGH"),
         })
 
-    risk_score   = calculate_risk_score(all_findings)
-    cost_waste   = calculate_cost_waste(all_findings)
-
     severity_counts = {
-        "CRITICAL": len([f for f in all_findings if f["severity"] == "CRITICAL"]),
-        "HIGH":     len([f for f in all_findings if f["severity"] == "HIGH"]),
-        "MEDIUM":   len([f for f in all_findings if f["severity"] == "MEDIUM"]),
-        "LOW":      len([f for f in all_findings if f["severity"] == "LOW"]),
+        "CRITICAL": sum(1 for f in all_findings if f["severity"] == "CRITICAL"),
+        "HIGH":     sum(1 for f in all_findings if f["severity"] == "HIGH"),
+        "MEDIUM":   sum(1 for f in all_findings if f["severity"] == "MEDIUM"),
+        "LOW":      sum(1 for f in all_findings if f["severity"] == "LOW"),
     }
 
     return {
-        "project_id":              config.get("project_id", "unknown"),
         "project_name":            config.get("project_name", "GCP Project"),
-        "risk_score":              risk_score,
+        "project_id":              config.get("project_id", "my-gcp-project"),
+        "resources_scanned":       len(resources),
         "total_findings":          len(all_findings),
+        "risk_score":              calculate_risk_score(all_findings),
+        "estimated_monthly_waste": calculate_cost_waste(all_findings),
         "severity_counts":         severity_counts,
-        "estimated_monthly_waste": cost_waste,
-        "resources_scanned":       len(resource_results),
-        "resources":               resource_results,
-        "model_used":              PRIMARY_MODEL,
+        "resources":               resources,
     }
 
 
 class ChatRequest(BaseModel):
-    message: str
+    message:      str
     scan_context: dict = {}
 
 
 @app.post("/api/chat")
 def chat(req: ChatRequest):
-    """Send a question to Gemini 2.5 with the scan context as background."""
     if not req.message.strip():
         raise HTTPException(status_code=400, detail="Message cannot be empty")
 
-    context_str = json.dumps(req.scan_context, indent=2) if req.scan_context else "No scan data yet."
+    ctx = req.scan_context
+    if ctx and ctx.get("total_findings") is not None:
+        summary = f"""
+GCP Project : {ctx.get('project_name','Unknown')} ({ctx.get('project_id','')})
+Risk Score  : {ctx.get('risk_score','N/A')} / 100
+Findings    : {ctx.get('total_findings',0)} total
+  Critical  : {ctx.get('severity_counts',{}).get('CRITICAL',0)}
+  High      : {ctx.get('severity_counts',{}).get('HIGH',0)}
+  Medium    : {ctx.get('severity_counts',{}).get('MEDIUM',0)}
+  Low       : {ctx.get('severity_counts',{}).get('LOW',0)}
+Cost Waste  : ${ctx.get('estimated_monthly_waste',0)}
 
-    system_prompt = f"""You are CloudOps AI Copilot — a senior GCP cloud security and operations expert.
+Resources & Findings:
+{json.dumps(ctx.get('resources',[]), indent=2)}
+"""
+    else:
+        summary = "No scan data yet — ask the user to run a scan first."
 
-You are analyzing the following GCP project scan results:
-{context_str}
+    system_prompt = f"""You are CloudOps AI Copilot — a friendly expert GCP cloud security assistant.
 
-Your role:
-- Explain GCP security findings clearly in plain English
-- Give specific, GCP-native remediation steps (gcloud commands, Console navigation, or Terraform)
-- Quantify business risk and potential cost impact
-- Reference official GCP documentation where helpful
-- Be concise, practical, and actionable
-- Use bullet points for remediation steps
-- Prioritize fixes by severity: CRITICAL first, then HIGH, MEDIUM, LOW
+Current GCP scan data:
+{summary}
 
-Always respond as a helpful, expert GCP security advisor."""
+Rules:
+- Be warm and friendly. If someone says hi/hello, greet them back naturally.
+- Use simple language and emojis to make responses readable.
+- For security questions: prioritize CRITICAL first, then HIGH, MEDIUM, LOW.
+- Give exact gcloud CLI commands or Console steps to fix issues.
+- Keep responses focused and helpful."""
 
-    try:
-        model    = get_gemini_model()
-        response = model.generate_content(
-            f"{system_prompt}\n\nUser question: {req.message}",
-            generation_config=genai.types.GenerationConfig(
-                max_output_tokens=800,
-                temperature=0.3,
-            )
-        )
-        answer = response.text
-    except Exception as e:
-        # Try fallback model
-        try:
-            model    = genai.GenerativeModel(FALLBACK_MODEL)
-            response = model.generate_content(
-                f"{system_prompt}\n\nUser question: {req.message}",
-                generation_config=genai.types.GenerationConfig(
-                    max_output_tokens=800,
-                    temperature=0.3,
-                )
-            )
-            answer = response.text
-        except Exception as e2:
-            raise HTTPException(status_code=500, detail=f"Gemini API error: {str(e2)}")
-
-    return {
-        "response":   answer,
-        "model_used": PRIMARY_MODEL,
-    }
-
-
-@app.get("/api/models")
-def list_models():
-    """List available Gemini models."""
-    try:
-        models = [m.name for m in genai.list_models()
-                  if "generateContent" in m.supported_generation_methods
-                  and "gemini-2" in m.name]
-        return {"available_gemini_2x_models": models}
-    except Exception as e:
-        return {"error": str(e), "note": "Models configured: gemini-2.5-flash, gemini-2.5-pro"}
+    text, model_used = call_gemini(f"{system_prompt}\n\nUser: {req.message}")
+    return {"response": text, "model_used": model_used}
