@@ -422,32 +422,33 @@ async function sendChat() {
   input.value = '';
   document.getElementById('chatBtn').disabled = true;
 
-  const thinking = addMsg('⏳ Thinking...', 'bot thinking');
+  const thinking = addMsg('⏳ Thinking...', 'bot');
 
   try {
     const res = await fetch(`${API}/api/chat`, {
-      method:  'POST',
+      method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body:    JSON.stringify({
+      body: JSON.stringify({
         message: msg,
         scan_context: scanData || {}
       })
     });
 
     const data = await res.json();
-
     thinking.remove();
 
-    if (res.ok && data.response) {
-      const botMsg = addMsg(data.response, 'bot');
-      botMsg.innerHTML += `<div class="msg-meta">✦ gemini-2.5-flash</div>`;
+    // 🔥 HANDLE ALL CASES
+    if (data.response) {
+      addMsg(data.response, 'bot');
+    } else if (data.detail) {
+      addMsg("⚠️ " + data.detail, 'bot');
     } else {
-      addMsg("⚠️ API error. Please try again.", 'bot');
+      addMsg("⚠️ Unexpected response from server", 'bot');
     }
 
   } catch(e) {
     thinking.remove();
-    addMsg("❌ Cannot connect to backend (Render sleeping or network issue)", 'bot');
+    addMsg("❌ Backend not reachable (Render sleeping or network issue)", 'bot');
   }
 
   document.getElementById('chatBtn').disabled = false;
