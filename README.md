@@ -101,5 +101,7 @@ Simply open `frontend/index.html` in your browser (double-click it).
 | GKE Cluster | Legacy ABAC, network policy, private cluster, Workload Identity |
 
 ## Results 
+## Access The live link:https://storage.googleapis.com/cloudops-frontend-123/index.html
+
 <img width="1916" height="1026" alt="image" src="https://github.com/user-attachments/assets/1a3ed888-7199-401c-b758-c953dc13932e" />
 
