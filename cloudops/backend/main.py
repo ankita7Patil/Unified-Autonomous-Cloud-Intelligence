@@ -51,8 +51,9 @@ def call_gemini(prompt: str):
 app = FastAPI(title="CloudOps AI Copilot", version="1.0")
 
 app.add_middleware(
-    CORSMiddleware,
+  CORSMiddleware,
     allow_origins=["*"],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
