@@ -236,147 +236,35 @@
 
 <script>
 const API = 'https://cloudops-ai-copilot.onrender.com';
-let   scanData = null;
+let scanData = null;
 
 // ── Scan ──────────────────────────────────────────────────────
 async function runScan() {
-  const btn  = document.getElementById('scanBtn');
-  const icon = document.getElementById('scanIcon');
-  btn.disabled   = true;
-  icon.innerHTML = '<span class="spinner"></span>';
-  btn.childNodes[1].textContent = ' Scanning GCP resources...';
+  const btn = document.getElementById('scanBtn');
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Scanning GCP resources...';
 
   try {
-    const res  = await fetch(`${API}/api/scan`);
+    const res = await fetch(`${API}/api/scan`);
+
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
     scanData = await res.json();
     renderAll(scanData);
-  } catch(e) {
-    alert('❌ Cannot connect to backend.\n\nStart it with:\n  cd backend\n  uvicorn main:app --reload\n\nError: ' + e.message);
+
+  } catch (e) {
+    alert("⏳ Backend may be sleeping (Render free tier).\n\nClick again in 10 seconds.\n\nError: " + e.message);
   }
 
-  btn.disabled        = false;
-  icon.innerHTML      = '🔍';
-  btn.childNodes[1].textContent = ' Run GCP Security Scan';
-}
-
-// ── Render everything ─────────────────────────────────────────
-function renderAll(data) {
-  renderStats(data);
-  renderProjectInfo(data);
-  renderResources(data.resources);
-  renderSeverityChart(data.severity_counts, data.total_findings);
-  renderFindings(data.resources);
-}
-
-function renderStats(data) {
-  const score = data.risk_score;
-  setEl('riskScore',     score);
-  setEl('criticalCount', data.severity_counts.CRITICAL);
-  setEl('highCount',     data.severity_counts.HIGH);
-  setEl('totalFindings', data.total_findings);
-  setEl('costWaste',     '$' + (data.estimated_monthly_waste || 0).toFixed(0));
-
-  // Risk score color
-  const color  = score < 40 ? '#EA4335' : score < 65 ? '#FBBC05' : '#34A853';
-  document.getElementById('riskScore').style.color = color;
-  document.getElementById('riskBar').style.width   = score + '%';
-  document.getElementById('riskBar').style.background = color;
-}
-
-function renderProjectInfo(data) {
-  document.getElementById('projectInfo').innerHTML =
-    `Project: <span>${data.project_name}</span> &nbsp;|&nbsp; ID: <span>${data.project_id}</span> &nbsp;|&nbsp; ${data.resources_scanned} resources scanned`;
-}
-
-function renderResources(resources) {
-  const el = document.getElementById('resourceList');
-  if (!resources?.length) { el.innerHTML = '<div class="empty-state">No resources found</div>'; return; }
-
-  el.innerHTML = resources.map(r => {
-    const cls = r.critical_count > 0 ? 'has-critical'
-              : r.high_count     > 0 ? 'has-high'
-              : r.finding_count  > 0 ? 'has-medium'
-              : 'no-issues';
-
-    const badges = [
-      r.critical_count > 0 ? `<span class="rbadge rbadge-critical">${r.critical_count} CRITICAL</span>` : '',
-      r.high_count     > 0 ? `<span class="rbadge rbadge-high">${r.high_count} HIGH</span>`         : '',
-      r.finding_count === 0 ? `<span class="rbadge" style="background:rgba(52,168,83,.2);color:#34A853;border:1px solid #34A85340">✓ Clean</span>` : '',
-    ].join('');
-
-    return `<div class="resource-item ${cls}" onclick="filterFindingsByResource('${r.id}')">
-      <div class="resource-name">${r.name}</div>
-      <div class="resource-meta">${r.type} · ${r.region} · $${r.cost_per_month}/mo</div>
-      <div class="resource-badges">${badges}</div>
-    </div>`;
-  }).join('');
-}
-
-function renderSeverityChart(counts, total) {
-  const el    = document.getElementById('severityChart');
-  const items = [
-    { label: 'CRITICAL', count: counts.CRITICAL, color: '#EA4335', text: '#fff' },
-    { label: 'HIGH',     count: counts.HIGH,     color: '#FBBC05', text: '#060D1F' },
-    { label: 'MEDIUM',   count: counts.MEDIUM,   color: '#4285F4', text: '#fff' },
-    { label: 'LOW',      count: counts.LOW,       color: '#8BA3C7', text: '#060D1F' },
-  ];
-
-  el.innerHTML = `<div class="sev-chart">` + items.map(i => {
-    const pct = total > 0 ? Math.round((i.count / total) * 100) : 0;
-    return `<div class="sev-row">
-      <div class="sev-row-label" style="color:${i.color}">${i.label}</div>
-      <div class="sev-row-bar">
-        <div class="sev-row-fill" style="width:${pct}%;background:${i.color};color:${i.text}">
-          ${pct > 8 ? pct + '%' : ''}
-        </div>
-      </div>
-      <div class="sev-row-count" style="color:${i.color}">${i.count}</div>
-    </div>`;
-  }).join('') + `</div>
-  <div style="margin-top:16px;padding:12px;background:#0a1628;border-radius:8px;font-size:12px;color:#8BA3C7;line-height:1.6">
-    <div style="color:#fff;font-weight:600;margin-bottom:4px">📋 Scan Summary</div>
-    Total: <strong style="color:#fff">${total}</strong> findings across 
-    <strong style="color:#fff">${Object.values(counts).reduce((a,b)=>a+b,0)}</strong> checks run
-  </div>`;
-}
-
-function renderFindings(resources) {
-  const el = document.getElementById('findingsList');
-  const all = resources.flatMap(r =>
-    r.findings.map(f => ({ ...f, resource_name: r.name, resource_type: r.type }))
-  );
-
-  const order = { CRITICAL:0, HIGH:1, MEDIUM:2, LOW:3 };
-  all.sort((a,b) => order[a.severity] - order[b.severity]);
-
-  if (!all.length) { el.innerHTML = '<div class="empty-state" style="color:#34A853">✅ No findings — your GCP project looks clean!</div>'; return; }
-
-  el.innerHTML = all.map((f, i) => `
-    <div class="finding-item sev-${f.severity}" id="fi-${i}" onclick="toggleFinding(${i})">
-      <div>
-        <span class="sev-badge badge-${f.severity}">${f.severity}</span>
-        <span class="rule-code">${f.rule}</span>
-        <span style="font-size:10px;color:#8BA3C7;margin-left:8px">${f.resource_name} · ${f.resource_type}</span>
-      </div>
-      <div class="finding-title">${f.title}</div>
-      <div class="finding-desc">${f.description}</div>
-      <div class="finding-fix">🔧 <strong>Fix:</strong> ${f.remediation}</div>
-    </div>`).join('');
-}
-
-function toggleFinding(i) {
-  document.getElementById(`fi-${i}`).classList.toggle('expanded');
-}
-
-function filterFindingsByResource(resourceId) {
-  ask(`Tell me about all security findings for the resource "${resourceId}" and how to fix them in priority order`);
+  btn.disabled = false;
+  btn.innerHTML = '🔍 Run GCP Security Scan';
 }
 
 // ── Chat ──────────────────────────────────────────────────────
 async function sendChat() {
   const input = document.getElementById('chatInput');
-  const msg   = input.value.trim();
+  const msg = input.value.trim();
   if (!msg) return;
 
   addMsg(msg, 'user');
@@ -387,49 +275,50 @@ async function sendChat() {
 
   try {
     const res = await fetch(`${API}/api/chat`, {
-      method:  'POST',
-      headers: {'Content-Type': 'application/json'},
-      body:    JSON.stringify({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
         message: msg,
         scan_context: scanData || {}
       })
     });
 
     const data = await res.json();
-
     thinking.remove();
 
     if (res.ok && data.response) {
       const botMsg = addMsg(data.response, 'bot');
       botMsg.innerHTML += `<div class="msg-meta">✦ gemini-2.5-flash</div>`;
     } else {
-      addMsg("⚠️ API error. Please try again.", 'bot');
+      addMsg("⚠️ API error. Try again.", 'bot');
     }
 
-  } catch(e) {
+  } catch (e) {
     thinking.remove();
-    addMsg("❌ Cannot connect to backend (Render sleeping or network issue)", 'bot');
+    addMsg("❌ Cannot connect to backend (Render sleeping or CORS issue)", 'bot');
   }
 
   document.getElementById('chatBtn').disabled = false;
 }
 
+// ── Helpers ───────────────────────────────────────────────────
 function ask(q) {
   document.getElementById('chatInput').value = q;
   sendChat();
 }
 
 function addMsg(text, type) {
-  const div       = document.createElement('div');
-  div.className   = `msg ${type}`;
+  const div = document.createElement('div');
+  div.className = `msg ${type}`;
   div.textContent = text;
-  const c         = document.getElementById('chatMessages');
+
+  const c = document.getElementById('chatMessages');
   c.appendChild(div);
   c.scrollTop = c.scrollHeight;
+
   return div;
 }
 
-// ── Utils ─────────────────────────────────────────────────────
 function setEl(id, val) {
   const el = document.getElementById(id);
   if (el) el.textContent = val;
