@@ -17,7 +17,6 @@
 6. [Deployment](#deployment)
 7. [API Reference](#api-reference)
 8. [Security & Compliance](#security--compliance)
-9. [Development Roadmap](#development-roadmap)
 
 ---
 
