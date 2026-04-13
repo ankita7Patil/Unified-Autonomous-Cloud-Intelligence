@@ -1136,21 +1136,6 @@ curl -X POST http://localhost:8000/api/projects \
 
 ---
 
-## Development Roadmap
-
-### V1 → V2 Evolution
-
-| Phase | Focus | Timeline |
-|-------|-------|----------|
-| **Phase 1** | Single-project scanner | ✓ Complete |
-| **Phase 2** | Multi-project orchestration | ✓ Complete |
-| **Phase 3** | Specialist agents (SRE, Sec, FinOps) | ✓ Complete |
-| **Phase 4** | Saga pattern + approval workflows | ✓ Complete |
-| **Phase 5** | Production hardening | In Progress |
-| **Phase 6** | Vector search (RAG runbooks) | Q2 2024 |
-| **Phase 7** | Multi-cloud (AWS, Azure support) | Q3 2024 |
-| **Phase 8** | Fine-tuned domain models | Q4 2024 |
-
 ### Future Enhancements
 
 - [ ] **Multi-Cloud** — AWS (Security Hub + Cost Explorer), Azure (Defender + Cost Management)
