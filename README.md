@@ -3,7 +3,7 @@
 **Unified Autonomous Cloud Intelligence (UACI) — Multi-Generational Evolution**
 
 > Enterprise-grade GCP Cloud Security, Operations, and FinOps platform powered by Gemini 2.5 / 2.0 models  
-> *Submission for CloudSentinel AI Hackathon — Problem 7 + Problem 14*
+> *Submission for Srijan 2026 Hackathon — Problem 7 + Problem 14*
 
 ---
 
